@@ -16,7 +16,7 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11' # Actualizado a 3.11 para evitar warnings de deprecación
 
       - name: Instalar dependencias
         run: |
@@ -25,6 +25,8 @@ jobs:
 
       - name: Ejecutar Pipeline
         env:
-          GDRIVE_SERVICE_ACCOUNT: ${{ secrets.GDRIVE_SERVICE_ACCOUNT }}
+          # Mapeamos los secretos de GitHub a variables de entorno que Python puede leer
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
           python -m src.main
