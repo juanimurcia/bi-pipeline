@@ -28,5 +28,5 @@ def upload_to_drive(local_file_path, drive_file_name, folder_id):
     
     file_drive = drive.CreateFile(file_metadata)
     file_drive.SetContentFile(local_file_path)
-    file_drive.Upload()
+    file_drive.Upload(param={'supportsAllDrives': True})
     print(f"✅ Archivo '{drive_file_name}' subido correctamente a Drive.")
