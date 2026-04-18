@@ -27,4 +27,4 @@ jobs:
         env:
           GDRIVE_SERVICE_ACCOUNT: ${{ secrets.GDRIVE_SERVICE_ACCOUNT }}
         run: |
-          python src/main.py
+          python -m src.main
