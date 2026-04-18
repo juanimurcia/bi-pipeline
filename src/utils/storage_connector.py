@@ -12,18 +12,28 @@ def get_storage_client():
     return create_client(url, key)
 
 def upload_to_lakehouse(local_path, remote_path, bucket="Lakehouse"):
-    """Sube un archivo al bucket de Supabase (Capa Bronze)."""
+    """Sube archivos al bucket de Supabase manejando sobreescritura."""
     supabase = get_storage_client()
     
     try:
         with open(local_path, 'rb') as f:
-            # upsert=true permite sobreescribir el archivo si ya existe
+            # Intentamos subir con upsert=True
+            # Si el archivo ya existe, lo reemplaza. Si no, lo crea.
             supabase.storage.from_(bucket).upload(
                 path=remote_path,
                 file=f,
                 file_options={"upsert": "true"}
             )
-        print(f"✅ Archivo '{remote_path}' subido con éxito al Lakehouse.")
+        print(f"✅ Archivo '{remote_path}' procesado con éxito.")
     except Exception as e:
-        print(f"❌ Error al subir a Supabase: {e}")
-        raise e
+        # Si el error es que ya existe o falta permiso, intentamos un 'update' explícito
+        if "already exists" in str(e).lower():
+            with open(local_path, 'rb') as f:
+                supabase.storage.from_(bucket).update(
+                    path=remote_path,
+                    file=f
+                )
+            print(f"✅ Archivo '{remote_path}' actualizado con éxito.")
+        else:
+            print(f"❌ Error real de Storage: {e}")
+            raise e
