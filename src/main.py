@@ -1,35 +1,26 @@
 import os
-# Importamos el ID desde el archivo de configuración
-from src.config import DRIVE_FOLDER_ID
-from src.utils.drive_connector import upload_to_drive
+from src.utils.storage_connector import upload_to_lakehouse
 
 def main():
-    print("--- Probando Conector de Lakehouse (Bronce) ---")
+    print("--- Iniciando Ingesta: Lakehouse Medallion (Capa Bronze) ---")
     
-    # 1. Creamos un archivo de texto simple para probar la subida
-    test_file_name = "prueba_conexion.txt"
+    test_file = "test_ingesta.txt"
     try:
-        with open(test_file_name, "w", encoding="utf-8") as f:
-            f.write("Hola! Esta es una prueba utilizando el archivo de configuracion.")
+        # 1. Crear dato de prueba
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("Prueba de pipeline: Conexión Supabase exitosa.")
         
-        # 2. Usamos DRIVE_FOLDER_ID que viene de src/config.py
-        # IMPORTANTE: upload_to_drive ya tiene su propio try/except y raise
-        upload_to_drive(test_file_name, "conexion_con_config.txt", DRIVE_FOLDER_ID)
+        # 2. Subir al Storage (Bucket: Lakehouse, Carpeta: bronze)
+        upload_to_lakehouse(test_file, "bronze/test_conexion.txt")
         
-        print("🚀 Prueba completada con éxito. Revisa tu carpeta de Drive!")
+        print("🚀 ¡Pipeline completado! Revisa el bucket 'Lakehouse' en Supabase.")
 
     except Exception as e:
-        # Imprimimos el error pero NO lo silenciamos
-        print(f"❌ El Pipeline falló en la etapa de prueba: {e}")
-        # Al relanzar el error (raise), GitHub Actions marcará la ejecución como FALLIDA
+        print(f"❌ El proceso falló: {e}")
         raise e
-        
     finally:
-        # El bloque finally se asegura de borrar el archivo temporal 
-        # sin importar si la subida funcionó o no.
-        if os.path.exists(test_file_name):
-            os.remove(test_file_name)
-            print(f"--- Limpieza: Archivo temporal {test_file_name} eliminado ---")
+        if os.path.exists(test_file):
+            os.remove(test_file)
 
 if __name__ == "__main__":
     main()
