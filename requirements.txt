@@ -1,0 +1,6 @@
+pandas
+pyarrow
+pydrive2
+sqlalchemy
+psycopg2-binary
+kagglehub
