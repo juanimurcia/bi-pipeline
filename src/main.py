@@ -1,26 +1,29 @@
 import os
+from src.bronze.ingestion import descargar_datos, aplicar_logica_carga, obtener_ruta_supabase
 from src.utils.storage_connector import upload_to_lakehouse
 
 def main():
-    print("--- Iniciando Ingesta: Lakehouse Medallion (Capa Bronze) ---")
-    
-    test_file = "test_ingesta.txt"
     try:
-        # 1. Crear dato de prueba
-        with open(test_file, "w", encoding="utf-8") as f:
-            f.write("Prueba de pipeline: Conexión Supabase exitosa.")
+        # 1. Obtener tipo de carga desde GitHub
+        tipo_carga = os.getenv("TIPO_CARGA", "INCREMENTAL")
         
-        # 2. Subir al Storage (Bucket: Lakehouse, Carpeta: bronze)
-        upload_to_lakehouse(test_file, "bronze/test_conexion.txt")
+        # 2. Descargar y Transformar
+        df_raw = descargar_datos()
+        df_final = aplicar_logica_carga(df_raw, tipo_carga)
         
-        print("🚀 ¡Pipeline completado! Revisa el bucket 'Lakehouse' en Supabase.")
+        # 3. Definir ruta y guardar temporalmente
+        remote_path = obtener_ruta_supabase(df_final, tipo_carga)
+        temp_file = "temp_bronze.parquet"
+        df_final.to_parquet(temp_file, index=False)
+        
+        # 4. Subir a Supabase
+        upload_to_lakehouse(temp_file, remote_path)
+        
+        print(f"✅ Proceso finalizado exitosamente en: {remote_path}")
 
     except Exception as e:
-        print(f"❌ El proceso falló: {e}")
+        print(f"❌ Error crítico en el pipeline: {e}")
         raise e
-    finally:
-        if os.path.exists(test_file):
-            os.remove(test_file)
 
 if __name__ == "__main__":
     main()
