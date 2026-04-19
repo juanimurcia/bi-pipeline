@@ -3,7 +3,18 @@ name: Data Pipeline Medallion
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Esto permite ejecutarlo manualmente con un botón
+  schedule:
+    - cron: '0 0 * * *' # Se ejecuta solo todas las noches a las 00:00
+  workflow_dispatch: 
+    inputs:
+      tipo_carga:
+        description: 'Selecciona el tipo de carga'
+        required: true
+        default: 'INCREMENTAL'
+        type: choice
+        options:
+          - GLOBAL
+          - INCREMENTAL
 
 jobs:
   build:
@@ -16,7 +27,7 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # Actualizado a 3.11 para evitar warnings de deprecación
+          python-version: '3.11'
 
       - name: Instalar dependencias
         run: |
@@ -25,8 +36,11 @@ jobs:
 
       - name: Ejecutar Pipeline
         env:
-          # Mapeamos los secretos de GitHub a variables de entorno que Python puede leer
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          # Importante para que kagglehub pueda autenticarse
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_CONFIG_DIR }}
+          # Captura lo que elijas en el botón o usa INCREMENTAL por defecto
+          TIPO_CARGA: ${{ github.event.inputs.tipo_carga || 'INCREMENTAL' }}
         run: |
           python -m src.main
