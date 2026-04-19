@@ -2,7 +2,7 @@ import os
 from supabase import create_client
 
 def get_storage_client():
-    """Establece conexión con Supabase Storage."""
+    """Establece conexión con Supabase."""
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_KEY")
     
@@ -12,22 +12,24 @@ def get_storage_client():
     return create_client(url, key)
 
 def upload_to_lakehouse(local_path, remote_path, bucket="Lakehouse"):
+    """Sube un archivo al Storage de Supabase usando la lógica de sobrescritura."""
     supabase = get_storage_client()
     
     with open(local_path, 'rb') as f:
         try:
-            # Intentamos subir (INSERT)
-            supabase.storage.from_(bucket).upload(
+            # Usar upsert=true es la forma limpia de manejar archivos existentes
+            response = supabase.storage.from_(bucket).upload(
                 path=remote_path,
                 file=f,
-                file_options={"upsert": "true"}
+                file_options={"x-upsert": "true"} # Nota: En algunas versiones de la librería es "x-upsert"
             )
-            print(f"✅ Archivo subido: {remote_path}")
-        except Exception:
-            # Si el INSERT falla porque ya existe o por política, intentamos UPDATE
-            with open(local_path, 'rb') as f:
+            print(f"✅ Archivo procesado correctamente en: {remote_path}")
+        except Exception as e:
+            # Si el error es simplemente que ya existe, pero queremos asegurar que se suba:
+            print(f"⚠️ Nota: Si el archivo ya existía, se intentará actualizar. Error original: {e}")
+            with open(local_path, 'rb') as f_retry:
                 supabase.storage.from_(bucket).update(
                     path=remote_path,
-                    file=f
+                    file=f_retry
                 )
             print(f"✅ Archivo actualizado: {remote_path}")
