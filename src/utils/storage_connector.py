@@ -1,5 +1,6 @@
 import os
 from supabase import create_client
+from src.config import SUPABASE_BUCKET_NAME
 
 def get_storage_client():
     """Establece conexión con Supabase."""
@@ -11,7 +12,7 @@ def get_storage_client():
         
     return create_client(url, key)
 
-def upload_to_lakehouse(local_path, remote_path, bucket="Lakehouse"):
+def upload_to_lakehouse(local_path, remote_path, bucket=SUPABASE_BUCKET_NAME):
     """Sube un archivo al Storage de Supabase usando la lógica de sobrescritura."""
     supabase = get_storage_client()
     
