@@ -10,14 +10,15 @@ def get_db_engine():
     user = os.getenv("DB_USER")
     password = os.getenv("DB_PASS")
     host = os.getenv("DB_HOST")
-    port = os.getenv("DB_PORT", "5432")
+    port = os.getenv("DB_PORT", "6543")
     dbname = os.getenv("DB_NAME", "postgres")
     
-    # Construcción de la URL para PostgreSQL
-    # Usamos psycopg2 como driver (está en tu requirements.txt)
-    db_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+    # Construimos la URL con los parámetros que nos dio Supabase
+    # Agregamos sslmode=require para seguridad
+    db_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}?sslmode=require&pgbouncer=true"
     
-    return create_engine(db_url)
+    # Usamos NullPool porque el pooler de Supabase ya maneja las conexiones
+    return create_engine(db_url, poolclass=NullPool)
 
 def cargar_a_sql(tablas_dict, tipo_carga):
     """
