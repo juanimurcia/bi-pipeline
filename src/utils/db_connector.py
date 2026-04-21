@@ -49,7 +49,7 @@ def cargar_a_sql(tablas_dict, tipo_carga):
         'dim_customer': {
             'customer_id': BigInteger, 'customer_fname': String(100), 'customer_lname': String(100),
             'customer_email': String(150), 'customer_street': String(255), 
-            'customer_zipcode': String(20), 'latitude': Float, 'longitude': Float
+            'customer_zipcode': String(20), 'latitude': Float, 'longitude': Float, 'customer_segment_id': Integer
         },
         'dim_product': {
             'product_id': BigInteger, 'category_id': Integer, 
