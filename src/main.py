@@ -86,31 +86,31 @@ def main():
         print("\nStep 4: Iniciando Transformación (Esquema Snowflake)...")
         tablas_silver = transformar_a_silver(df_final)
 
-        # Lógica de IDs Únicos: AñoCorto + SegundoDelDía + ID Original
+        # Lógica de IDs Únicos con Tiempo Congelado (yyMMdd + Segundos + ID)
         if tipo_carga == 'INCREMENTAL':
-            print("⚠️ Ajustando IDs para carga incremental (yyMMdd + Segundos + ID)...")
+            print("⚠️ Ajustando IDs para carga incremental (Timestamp Congelado)...")
+            
+            # 1. Congelamos el sello de tiempo para todo el lote actual
+            now_incremental = datetime.now()
+            fecha_prefijo = int(now_incremental.strftime("%y%m%d"))
+            segundos_dia = (now_incremental.hour * 3600) + (now_incremental.minute * 60) + now_incremental.second
+            factor = 10000000 
+            
+            # Prefijo único para esta ejecución (ej: 2604210086400)
+            prefijo_ejecucion = (fecha_prefijo * factor) + segundos_dia
             
             # Filtramos para procesar solo tablas de hechos en incremental
             tablas_silver = {k: v for k, v in tablas_silver.items() if k.startswith('fact_')}
             
-            now = datetime.now()
-            # 1. Prefijo de fecha (ej: 260421)
-            fecha_prefijo = int(now.strftime("%y%m%d"))
-            
-            # 2. Segundos transcurridos hoy (0 a 86400)
-            segundos_dia = (now.hour * 3600) + (now.minute * 60) + now.second
-            
-            # 3. Factor de desplazamiento (10 millones)
-            # Esto deja espacio para el segundo del día y el ID original sin colisiones
-            factor = 10000000 
-            
-            # Cálculo final: (260421 * 10.000.000) + 86400 + ID_Original
             if 'fact_order' in tablas_silver:
-                tablas_silver['fact_order']['order_id'] = (fecha_prefijo * factor) + segundos_dia + tablas_silver['fact_order']['order_id']
+                # Sumamos el prefijo idéntico a todas las filas de la tabla de órdenes
+                tablas_silver['fact_order']['order_id'] = prefijo_ejecucion + tablas_silver['fact_order']['order_id']
             
             if 'fact_item_order' in tablas_silver:
-                tablas_silver['fact_item_order']['order_id'] = (fecha_prefijo * factor) + segundos_dia + tablas_silver['fact_item_order']['order_id']
-                tablas_silver['fact_item_order']['order_item_id'] = (fecha_prefijo * factor) + segundos_dia + tablas_silver['fact_item_order']['order_item_id']
+                # IMPORTANTE: Usamos el MISMO prefijo_ejecucion para que el order_id coincida
+                tablas_silver['fact_item_order']['order_id'] = prefijo_ejecucion + tablas_silver['fact_item_order']['order_id']
+                # También lo aplicamos al ID del ítem para asegurar su unicidad
+                tablas_silver['fact_item_order']['order_item_id'] = prefijo_ejecucion + tablas_silver['fact_item_order']['order_item_id']
 
         print("Step 5: Persistiendo en Base de Datos PostgreSQL (Supabase)...")
         cargar_a_sql(tablas_silver, tipo_carga)
