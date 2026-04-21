@@ -111,8 +111,8 @@ def construir_tablas_hechos(df_master, dims):
                     'type_id', 'order_status_id', 'delivery_status_id', 'shipping_mode_id', 'late_delivery_risk']].drop_duplicates('order_id')
     
     # Fact Item Order
-    f_item = df_f[['order_item_id', 'order_id', 'product_card_id', 'order_item_quantity', 
-                   'order_item_total', 'sales', 'benefit_per_order', 'profit_ratio_calc']].rename(columns={'product_card_id': 'product_id'})
+    f_item = df_f[['order_item_id', 'order_id', 'product_card_id', 'order_item_quantity', 'sales', 'order_item_discount_rate', 'order_item_discount',
+                   'order_item_total', 'benefit_per_order', 'profit_ratio_calc']].rename(columns={'product_card_id': 'product_id'})
     f_item = f_item.drop_duplicates(subset=['order_item_id'])
     
     return f_order, f_item
