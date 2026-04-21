@@ -1,39 +1,53 @@
 import os
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.pool import NullPool # Importante para el pooler
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
 from sqlalchemy import BigInteger, Float, String, DateTime, Integer, Boolean
-from sqlalchemy import text 
 
 def get_db_engine():
     """
-    Construye la conexión a Supabase usando las variables de entorno 
-    configuradas en GitHub Secrets.
+    Construye la conexión a Supabase usando las variables de entorno.
     """
     user = os.getenv("DB_USER")
     password = os.getenv("DB_PASS")
-    host = os.getenv("DB_HOST") # El que termina en .pooler.supabase.com
+    host = os.getenv("DB_HOST") 
     port = os.getenv("DB_PORT", "6543")
     dbname = os.getenv("DB_NAME", "postgres")
     
-    # 1. Quitamos "&pgbouncer=true" de la URL. 
-    # El puerto 6543 ya le indica a Supabase que pase por el pooler.
     db_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}?sslmode=require"
     
-    # 2. Mantenemos NullPool. Esto es VITAL para el Transaction Mode del Pooler.
     return create_engine(
         db_url, 
         poolclass=NullPool,
-        connect_args={"connect_timeout": 30} # Aumentamos un poco el timeout por seguridad
+        connect_args={"connect_timeout": 30}
     )
+
+def registrar_auditoria(engine, tipo, estado, filas=0, error=None):
+    """
+    Inserta un registro en la tabla audit_logs para seguimiento del pipeline.
+    """
+    query = text("""
+        INSERT INTO audit_logs (tipo_carga, estado, filas_insertadas, mensaje_error)
+        VALUES (:tipo, :estado, :filas, :error)
+    """)
+    
+    try:
+        with engine.connect() as conn:
+            conn.execute(query, {
+                "tipo": tipo, 
+                "estado": estado, 
+                "filas": filas, 
+                "error": error
+            })
+            conn.commit()
+    except Exception as e:
+        print(f"⚠️ No se pudo escribir en audit_logs: {e}")
 
 def cargar_a_sql(tablas_dict, tipo_carga):
     engine = get_db_engine()
     modo = 'replace' if tipo_carga == 'GLOBAL' else 'append'
     
-    # --- DICCIONARIO DE ESQUEMAS COMPLETO ---
     esquemas = {
-        # Tablas de Hechos (Facts)
         'fact_item_order': {
             'order_item_id': BigInteger, 'order_id': BigInteger, 'product_id': BigInteger,
             'order_item_quantity': Integer, 'sales': Float, 'order_item_discount': Float,
@@ -46,7 +60,6 @@ def cargar_a_sql(tablas_dict, tipo_carga):
             'type_id': Integer, 'order_status_id': Integer, 'delivery_status_id': Integer,
             'shipping_mode_id': Integer, 'late_delivery_risk': Boolean
         },
-        # Dimensiones Principales
         'dim_customer': {
             'customer_id': BigInteger, 'customer_fname': String(100), 'customer_lname': String(100),
             'customer_email': String(150), 'customer_street': String(255), 
@@ -62,13 +75,11 @@ def cargar_a_sql(tablas_dict, tipo_carga):
         'dim_department': {
             'department_id': Integer, 'department_name': String(100)
         },
-        # Snowflake Geográfico
         'dim_city': {'city_id': Integer, 'city_name': String(100), 'state_id': Integer},
         'dim_state': {'state_id': Integer, 'state_name': String(100), 'country_id': Integer},
         'dim_country': {'country_id': Integer, 'country_name': String(100), 'region_id': Integer},
         'dim_region': {'region_id': Integer, 'region_name': String(100), 'market_id': Integer},
         'dim_market': {'market_id': Integer, 'market_name': String(100)},
-        # Tablas de Referencia (Lookups)
         'dim_type': {'type_id': Integer, 'type_name': String(50)},
         'dim_order_status': {'order_status_id': Integer, 'order_status_name': String(50)},
         'dim_delivery_status': {'delivery_status_id': Integer, 'delivery_status_name': String(50)},
@@ -78,11 +89,9 @@ def cargar_a_sql(tablas_dict, tipo_carga):
 
     print(f"\n--- Iniciando persistencia en Silver (Modo: {modo}) ---")
     
-    # Usamos una conexión explícita para ejecutar comandos SQL puros
     with engine.connect() as connection:
         for nombre_tabla, df in tablas_dict.items():
-            # Eliminamos el try/except interno para que el error escale
-            # 1. SI ES GLOBAL, ELIMINAMOS MANUALMENTE CON CASCADE
+            # 1. SI ES GLOBAL, ELIMINAMOS CON CASCADE
             if modo == 'replace':
                 connection.execute(text(f'DROP TABLE IF EXISTS {nombre_tabla} CASCADE'))
                 connection.commit()
@@ -91,7 +100,7 @@ def cargar_a_sql(tablas_dict, tipo_carga):
             if nombre_tabla == 'dim_city' and 'state_name' in df.columns:
                 df = df.drop(columns=['state_name'])
             
-            # 3. PERSISTENCIA CON PANDAS
+            # 3. PERSISTENCIA
             dtype_map = esquemas.get(nombre_tabla, None)
             
             df.to_sql(
@@ -103,7 +112,3 @@ def cargar_a_sql(tablas_dict, tipo_carga):
                 dtype=dtype_map
             )
             print(f"✅ Tabla '{nombre_tabla}' sincronizada.")
-            # Si to_sql falla, lanzará una excepción automáticamente que atrapará main.py
-                
-            except Exception as e:
-                print(f"❌ Error al cargar la tabla {nombre_tabla}: {e}")
