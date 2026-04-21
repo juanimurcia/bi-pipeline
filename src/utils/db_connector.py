@@ -81,29 +81,29 @@ def cargar_a_sql(tablas_dict, tipo_carga):
     # Usamos una conexión explícita para ejecutar comandos SQL puros
     with engine.connect() as connection:
         for nombre_tabla, df in tablas_dict.items():
-            try:
-                # 1. SI ES GLOBAL, ELIMINAMOS MANUALMENTE CON CASCADE
-                # Esto borra la tabla y sus relaciones (FK) para evitar el error de dependencia
-                if modo == 'replace':
-                    connection.execute(text(f'DROP TABLE IF EXISTS {nombre_tabla} CASCADE'))
-                    connection.commit()
-                
-                # 2. LIMPIEZA TÉCNICA (la que ya tenías)
-                if nombre_tabla == 'dim_city' and 'state_name' in df.columns:
-                    df = df.drop(columns=['state_name'])
-                
-                # 3. PERSISTENCIA CON PANDAS
-                dtype_map = esquemas.get(nombre_tabla, None)
-                
-                df.to_sql(
-                    nombre_tabla, 
-                    engine, 
-                    if_exists=modo, 
-                    index=False, 
-                    chunksize=1000, 
-                    dtype=dtype_map
-                )
-                print(f"✅ Tabla '{nombre_tabla}' sincronizada con tipos definidos.")
+            # Eliminamos el try/except interno para que el error escale
+            # 1. SI ES GLOBAL, ELIMINAMOS MANUALMENTE CON CASCADE
+            if modo == 'replace':
+                connection.execute(text(f'DROP TABLE IF EXISTS {nombre_tabla} CASCADE'))
+                connection.commit()
+            
+            # 2. LIMPIEZA TÉCNICA
+            if nombre_tabla == 'dim_city' and 'state_name' in df.columns:
+                df = df.drop(columns=['state_name'])
+            
+            # 3. PERSISTENCIA CON PANDAS
+            dtype_map = esquemas.get(nombre_tabla, None)
+            
+            df.to_sql(
+                nombre_tabla, 
+                engine, 
+                if_exists=modo, 
+                index=False, 
+                chunksize=1000, 
+                dtype=dtype_map
+            )
+            print(f"✅ Tabla '{nombre_tabla}' sincronizada.")
+            # Si to_sql falla, lanzará una excepción automáticamente que atrapará main.py
                 
             except Exception as e:
                 print(f"❌ Error al cargar la tabla {nombre_tabla}: {e}")
