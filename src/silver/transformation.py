@@ -134,17 +134,36 @@ def transformar_a_silver(df_bronze):
     # 2. Dimensiones
     d_mkt, d_reg, d_cnt, d_st, d_ct = generar_jerarquia_geografica(df)
     
+    # Creamos primero el lookup de segmentos para poder usarlo en dim_customer
+    d_segment = crear_lookup_table(df, 'customer_segment', 'customer_segment_id', 'customer_segment_name')
+    
+    # Preparamos dim_customer haciendo el merge con los segmentos
+    d_customer = df[['customer_id', 'customer_fname', 'customer_lname', 'customer_email', 
+                     'customer_street', 'customer_zipcode', 'customer_segment', 
+                     'latitude', 'longitude']].drop_duplicates('customer_id')
+    
+    d_customer = d_customer.merge(
+        d_segment, 
+        left_on='customer_segment', 
+        right_on='customer_segment_name', 
+        how='left'
+    ).drop(columns=['customer_segment', 'customer_segment_name']) # Dejamos solo el ID
+    
     dims = {
-        'dim_market': d_mkt, 'dim_region': d_reg, 'dim_country': d_cnt, 'dim_state': d_st, 'dim_city': d_ct,
+        'dim_market': d_mkt, 
+        'dim_region': d_reg, 
+        'dim_country': d_cnt, 
+        'dim_state': d_st, 
+        'dim_city': d_ct,
         'dim_type': crear_lookup_table(df, 'type', 'type_id', 'type_name'),
         'dim_order_status': crear_lookup_table(df, 'order_status', 'order_status_id', 'order_status_name'),
         'dim_delivery_status': crear_lookup_table(df, 'delivery_status', 'delivery_status_id', 'delivery_status_name'),
         'dim_shipping_mode': crear_lookup_table(df, 'shipping_mode', 'shipping_mode_id', 'shipping_mode_name'),
-        'dim_customer_segment': crear_lookup_table(df, 'customer_segment', 'customer_segment_id', 'customer_segment_name'),
+        'dim_customer_segment': d_segment, # Usamos la que ya creamos arriba
         'dim_department': df[['department_id', 'department_name']].drop_duplicates(),
         'dim_category': df[['category_id', 'category_name', 'department_id']].drop_duplicates(),
         'dim_product': df[['product_card_id', 'category_id', 'product_name', 'product_price']].drop_duplicates('product_card_id').rename(columns={'product_card_id': 'product_id'}),
-        'dim_customer': df[['customer_id', 'customer_fname', 'customer_lname', 'customer_email', 'customer_street', 'customer_zipcode', 'latitude', 'longitude']].drop_duplicates('customer_id')
+        'dim_customer': d_customer # Usamos la procesada con el ID de segmento
     }
     
     # 3. Hechos
