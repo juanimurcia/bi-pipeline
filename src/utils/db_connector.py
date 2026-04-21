@@ -3,6 +3,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool # Importante para el pooler
 from sqlalchemy import BigInteger, Float, String, DateTime, Integer, Boolean
+from sqlalchemy import text 
 
 def get_db_engine():
     """
@@ -77,23 +78,32 @@ def cargar_a_sql(tablas_dict, tipo_carga):
 
     print(f"\n--- Iniciando persistencia en Silver (Modo: {modo}) ---")
     
-    for nombre_tabla, df in tablas_dict.items():
-        try:
-            # Limpieza técnica: eliminamos columnas auxiliares que no pertenecen al modelo físico
-            if nombre_tabla == 'dim_city' and 'state_name' in df.columns:
-                df = df.drop(columns=['state_name'])
-            
-            dtype_map = esquemas.get(nombre_tabla, None)
-            
-            df.to_sql(
-                nombre_tabla, 
-                engine, 
-                if_exists=modo, 
-                index=False, 
-                chunksize=1000, # Aumentamos el chunksize para mayor velocidad en carga global
-                dtype=dtype_map
-            )
-            print(f"✅ Tabla '{nombre_tabla}' sincronizada con tipos definidos.")
-            
-        except Exception as e:
-            print(f"❌ Error al cargar la tabla {nombre_tabla}: {e}")
+    # Usamos una conexión explícita para ejecutar comandos SQL puros
+    with engine.connect() as connection:
+        for nombre_tabla, df in tablas_dict.items():
+            try:
+                # 1. SI ES GLOBAL, ELIMINAMOS MANUALMENTE CON CASCADE
+                # Esto borra la tabla y sus relaciones (FK) para evitar el error de dependencia
+                if modo == 'replace':
+                    connection.execute(text(f'DROP TABLE IF EXISTS {nombre_tabla} CASCADE'))
+                    connection.commit()
+                
+                # 2. LIMPIEZA TÉCNICA (la que ya tenías)
+                if nombre_tabla == 'dim_city' and 'state_name' in df.columns:
+                    df = df.drop(columns=['state_name'])
+                
+                # 3. PERSISTENCIA CON PANDAS
+                dtype_map = esquemas.get(nombre_tabla, None)
+                
+                df.to_sql(
+                    nombre_tabla, 
+                    engine, 
+                    if_exists=modo, 
+                    index=False, 
+                    chunksize=1000, 
+                    dtype=dtype_map
+                )
+                print(f"✅ Tabla '{nombre_tabla}' sincronizada con tipos definidos.")
+                
+            except Exception as e:
+                print(f"❌ Error al cargar la tabla {nombre_tabla}: {e}")
