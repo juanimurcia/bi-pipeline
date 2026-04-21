@@ -10,16 +10,20 @@ def get_db_engine():
     """
     user = os.getenv("DB_USER")
     password = os.getenv("DB_PASS")
-    host = os.getenv("DB_HOST")
+    host = os.getenv("DB_HOST") # El que termina en .pooler.supabase.com
     port = os.getenv("DB_PORT", "6543")
     dbname = os.getenv("DB_NAME", "postgres")
     
-    # Construimos la URL con los parámetros que nos dio Supabase
-    # Agregamos sslmode=require para seguridad
-    db_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}?sslmode=require&pgbouncer=true"
+    # 1. Quitamos "&pgbouncer=true" de la URL. 
+    # El puerto 6543 ya le indica a Supabase que pase por el pooler.
+    db_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}?sslmode=require"
     
-    # Usamos NullPool porque el pooler de Supabase ya maneja las conexiones
-    return create_engine(db_url, poolclass=NullPool)
+    # 2. Mantenemos NullPool. Esto es VITAL para el Transaction Mode del Pooler.
+    return create_engine(
+        db_url, 
+        poolclass=NullPool,
+        connect_args={"connect_timeout": 30} # Aumentamos un poco el timeout por seguridad
+    )
 
 def cargar_a_sql(tablas_dict, tipo_carga):
     """
