@@ -6,7 +6,7 @@ from datetime import datetime
 from src.bronze.ingestion import descargar_datos, aplicar_logica_carga, obtener_ruta_supabase
 from src.utils.storage_connector import upload_to_lakehouse
 from src.silver.transformation import transformar_a_silver
-from src.utils.db_connector import cargar_a_sql
+from src.utils.db_connector import cargar_a_sql, registrar_auditoria, get_db_engine
 
 def main():
     """
@@ -19,13 +19,16 @@ def main():
     El flujo se adapta según la variable de entorno 'TIPO_CARGA' (GLOBAL o INCREMENTAL).
     """
     start_time = datetime.now()
+
+    # Inicializamos el engine fuera del try para que esté disponible en el except
+    engine = get_db_engine()
+    tipo_carga = os.getenv("TIPO_CARGA", "INCREMENTAL")
     
     try:
         # ---------------------------------------------------------
         # 1. CONFIGURACIÓN DE ENTORNO
         # ---------------------------------------------------------
         # Captura la variable definida en GitHub Actions o usa INCREMENTAL por defecto
-        tipo_carga = os.getenv("TIPO_CARGA", "INCREMENTAL")
         print(f"{'='*60}")
         print(f"🚀 EJECUCIÓN DEL PIPELINE - MODO: {tipo_carga}")
         print(f"⏰ Inicio: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -81,29 +84,46 @@ def main():
         # 4. PROCESAMIENTO Y CARGA SQL (CAPA SILVER)
         # ---------------------------------------------------------
         print("\nStep 4: Iniciando Transformación (Esquema Snowflake)...")
-        # El módulo de transformación limpia nulos, outliers y normaliza textos
         tablas_silver = transformar_a_silver(df_final)
-        
+
+        # NUEVO: Lógica de IDs Únicos y Filtrado para INCREMENTAL
+        if tipo_carga == 'INCREMENTAL':
+            print("⚠️ Ajustando IDs y filtrando dimensiones para carga incremental...")
+            # 1. Solo hechos
+            tablas_silver = {k: v for k, v in tablas_silver.items() if k.startswith('fact_')}
+            
+            # 2. Generar prefijo único (YYYYMMDDHHMMSS)
+            timestamp_prefix = int(datetime.now().strftime("%Y%m%d%H%M%S"))
+            factor = 1000000 
+            
+            if 'fact_order' in tablas_silver:
+                tablas_silver['fact_order']['order_id'] = (timestamp_prefix * factor) + tablas_silver['fact_order']['order_id']
+            if 'fact_item_order' in tablas_silver:
+                tablas_silver['fact_item_order']['order_id'] = (timestamp_prefix * factor) + tablas_silver['fact_item_order']['order_id']
+                tablas_silver['fact_item_order']['order_item_id'] = (timestamp_prefix * factor) + tablas_silver['fact_item_order']['order_item_id']
+
         print("Step 5: Persistiendo en Base de Datos PostgreSQL (Supabase)...")
-        # cargar_a_sql decide automáticamente entre 'replace' (Global) o 'append' (Incremental)
         cargar_a_sql(tablas_silver, tipo_carga)
         
         # ---------------------------------------------------------
-        # 5. FINALIZACIÓN Y MÉTRICAS
+        # 5. FINALIZACIÓN Y AUDITORÍA EXITOSA
         # ---------------------------------------------------------
+        filas_cargadas = len(tablas_silver.get('fact_order', []))
+        registrar_auditoria(engine, tipo_carga, 'SUCCESS', filas=filas_cargadas)
+        
         end_time = datetime.now()
         duracion = end_time - start_time
-        print(f"\n{'='*60}")
-        print(f"🏁 PIPELINE FINALIZADO CON ÉXITO")
-        print(f"⏱️ Tiempo total de ejecución: {duracion}")
-        print(f"{'='*60}")
+        print(f"\n{'='*60}\n🏁 PIPELINE FINALIZADO CON ÉXITO\n{'='*60}")
 
     except Exception as e:
-        # Registro detallado de errores para facilitar el debugging en los logs de GitHub Actions
-        print(f"\n❌ ERROR CRÍTICO DETECTADO:")
-        print(f"Detalle: {str(e)}")
-        print(f"{'='*60}")
-        sys.exit(1) # Finaliza con error para alertar a GitHub Actions
+        # AUDITORÍA DE FALLO
+        try:
+            registrar_auditoria(engine, tipo_carga, 'FAILED', error=str(e))
+        except:
+            print("⚠️ No se pudo registrar el fallo en la tabla de auditoría.")
+            
+        print(f"\n❌ ERROR CRÍTICO: {str(e)}")
+        sys.exit(1) # Esto garantiza el ROJO en GitHub
 
 if __name__ == "__main__":
     main()
