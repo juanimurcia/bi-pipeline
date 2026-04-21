@@ -86,21 +86,31 @@ def main():
         print("\nStep 4: Iniciando Transformación (Esquema Snowflake)...")
         tablas_silver = transformar_a_silver(df_final)
 
-        # NUEVO: Lógica de IDs Únicos y Filtrado para INCREMENTAL
+        # Lógica de IDs Únicos: AñoCorto + SegundoDelDía + ID Original
         if tipo_carga == 'INCREMENTAL':
-            print("⚠️ Ajustando IDs y filtrando dimensiones para carga incremental...")
-            # 1. Solo hechos
+            print("⚠️ Ajustando IDs para carga incremental (yyMMdd + Segundos + ID)...")
+            
+            # Filtramos para procesar solo tablas de hechos en incremental
             tablas_silver = {k: v for k, v in tablas_silver.items() if k.startswith('fact_')}
             
-            # 2. Generar prefijo único (YYYYMMDDHHMMSS)
-            timestamp_prefix = int(datetime.now().strftime("%Y%m%d%H%M%S"))
-            factor = 1000000 
+            now = datetime.now()
+            # 1. Prefijo de fecha (ej: 260421)
+            fecha_prefijo = int(now.strftime("%y%m%d"))
             
+            # 2. Segundos transcurridos hoy (0 a 86400)
+            segundos_dia = (now.hour * 3600) + (now.minute * 60) + now.second
+            
+            # 3. Factor de desplazamiento (10 millones)
+            # Esto deja espacio para el segundo del día y el ID original sin colisiones
+            factor = 10000000 
+            
+            # Cálculo final: (260421 * 10.000.000) + 86400 + ID_Original
             if 'fact_order' in tablas_silver:
-                tablas_silver['fact_order']['order_id'] = (timestamp_prefix * factor) + tablas_silver['fact_order']['order_id']
+                tablas_silver['fact_order']['order_id'] = (fecha_prefijo * factor) + segundos_dia + tablas_silver['fact_order']['order_id']
+            
             if 'fact_item_order' in tablas_silver:
-                tablas_silver['fact_item_order']['order_id'] = (timestamp_prefix * factor) + tablas_silver['fact_item_order']['order_id']
-                tablas_silver['fact_item_order']['order_item_id'] = (timestamp_prefix * factor) + tablas_silver['fact_item_order']['order_item_id']
+                tablas_silver['fact_item_order']['order_id'] = (fecha_prefijo * factor) + segundos_dia + tablas_silver['fact_item_order']['order_id']
+                tablas_silver['fact_item_order']['order_item_id'] = (fecha_prefijo * factor) + segundos_dia + tablas_silver['fact_item_order']['order_item_id']
 
         print("Step 5: Persistiendo en Base de Datos PostgreSQL (Supabase)...")
         cargar_a_sql(tablas_silver, tipo_carga)
