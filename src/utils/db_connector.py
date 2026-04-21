@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool # Importante para el pooler
 
 def get_db_engine():
     """
