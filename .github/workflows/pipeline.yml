@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
   schedule:
-    - cron: '0 0 * * *' # Se ejecuta solo todas las noches a las 00:00
+    - cron: '0 0 * * *' # Ejecución automática diaria a medianoche
   workflow_dispatch: 
     inputs:
       tipo_carga:
@@ -34,13 +34,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Ejecutar Pipeline
+      - name: Ejecutar Pipeline Completo (Bronze + Silver)
         env:
+          # Credenciales para Storage (Bronze)
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          # Importante para que kagglehub pueda autenticarse
+          # Token para Kaggle
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_CONFIG_DIR }}
-          # Captura lo que elijas en el botón o usa INCREMENTAL por defecto
+          # Variables de control
           TIPO_CARGA: ${{ github.event.inputs.tipo_carga || 'INCREMENTAL' }}
+          # Credenciales para SQL (Silver) - RECIÉN AGREGADAS
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_PORT: ${{ secrets.DB_PORT }}
         run: |
           python -m src.main
