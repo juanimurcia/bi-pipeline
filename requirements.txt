@@ -3,6 +3,6 @@ pyarrow
 pydrive2
 sqlalchemy
 psycopg2-binary
-kagglehub
+kagglehub==0.2.6
 supabase
 fastparquet
