@@ -2,11 +2,11 @@ import os
 import sys
 from datetime import datetime
 
-# Importaciones de módulos internos del proyecto
-from src.bronze.ingestion import DataIngestor  # <- CAMBIO: Importamos la clase en vez de las funciones
-from src.utils.storage_connector import upload_to_lakehouse
+# Importaciones de clases orientadas a objetos
+from src.bronze.ingestion import DataIngestor
+from src.utils.storage_connector import StorageConnector  # <- CAMBIO: Traemos la Clase
 from src.silver.transformation import transformar_a_silver
-from src.utils.db_connector import cargar_a_sql, registrar_auditoria, get_db_engine
+from src.utils.db_connector import DbConnector  # <- CAMBIO: Traemos la Clase
 
 def main():
     """
@@ -19,10 +19,12 @@ def main():
     El flujo se adapta según la variable de entorno 'TIPO_CARGA' (GLOBAL o INCREMENTAL).
     """
     start_time = datetime.now()
-
-    # Inicializamos el engine fuera del try para que esté disponible en el except
-    engine = get_db_engine()
     tipo_carga = os.getenv("TIPO_CARGA", "INCREMENTAL")
+    
+    # Inicializamos todos nuestros componentes Orientados a Objetos
+    db_connector = DbConnector()           # <- CAMBIO: Inicializa engine e infraestructura SQL
+    storage_connector = StorageConnector() # <- CAMBIO: Inicializa cliente de Supabase Storage
+    ingestor = DataIngestor()              # Mantiene la inicialización previa
     
     try:
         # ---------------------------------------------------------
@@ -33,49 +35,41 @@ def main():
         print(f"⏰ Inicio: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*60}\n")
 
-        # Inicializamos nuestro componente de Ingesta Orientado a Objetos
-        ingestor = DataIngestor()  # <- CAMBIO: Instanciación de la clase
-
         # ---------------------------------------------------------
         # 2. INGESTA Y PREPARACIÓN (BRONZE)
         # ---------------------------------------------------------
         print("Step 1: Descargando datos desde Kaggle API...")
-        df_raw = ingestor.descargar_datos()  # <- CAMBIO: Llamada al método del objeto
+        df_raw = ingestor.descargar_datos()
         
         print("Step 2: Aplicando lógica de carga y simulación de fechas...")
-        # En GLOBAL usa datos históricos; en INCREMENTAL simula datos del día actual
-        df_final = ingestor.aplicar_logica_carga(df_raw, tipo_carga)  # <- CAMBIO: Llamada al método del objeto
+        df_final = ingestor.aplicar_logica_carga(df_raw, tipo_carga)
         
         # ---------------------------------------------------------
         # 3. PERSISTENCIA EN STORAGE (CAPA BRONZE)
         # ---------------------------------------------------------
         if tipo_carga == "GLOBAL":
             print("Step 3 [GLOBAL]: Iniciando particionamiento histórico...")
-            # Particionamos por Año/Mes para optimizar futuras lecturas (Hive Partitioning)
             grupos = df_final.groupby([
                 df_final['order date (DateOrders)'].dt.year, 
                 df_final['order date (DateOrders)'].dt.month
             ])
             
             for (year, month), df_grupo in grupos:
-                # Definición de ruta siguiendo el estándar del Lakehouse
                 remote_path = f"bronze/supply_chain/year={year}/month={month:02d}/global_load.parquet"
                 temp_file = f"temp_{year}_{month}.parquet"
                 
-                # Persistencia temporal y subida al Storage
                 df_grupo.to_parquet(temp_file, index=False)
-                upload_to_lakehouse(temp_file, remote_path)
+                storage_connector.upload_to_lakehouse(temp_file, remote_path) # <- CAMBIO: Uso del objeto conector
                 
-                # Limpieza de archivos temporales en el runner de GitHub
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
         else:
             print("Step 3 [INCREMENTAL]: Generando archivo diario...")
-            remote_path = ingestor.obtener_ruta_supabase(df_final, tipo_carga)  # <- CAMBIO: Llamada al método del objeto
+            remote_path = ingestor.obtener_ruta_supabase(df_final, tipo_carga)
             temp_file = "temp_incremental.parquet"
             
             df_final.to_parquet(temp_file, index=False)
-            upload_to_lakehouse(temp_file, remote_path)
+            storage_connector.upload_to_lakehouse(temp_file, remote_path) # <- CAMBIO: Uso del objeto conector
             
             if os.path.exists(temp_file):
                 os.remove(temp_file)
@@ -92,50 +86,43 @@ def main():
         if tipo_carga == 'INCREMENTAL':
             print("⚠️ Ajustando IDs para carga incremental (Timestamp Congelado)...")
             
-            # 1. Congelamos el sello de tiempo para todo el lote actual
             now_incremental = datetime.now()
             fecha_prefijo = int(now_incremental.strftime("%y%m%d"))
             segundos_dia = (now_incremental.hour * 3600) + (now_incremental.minute * 60) + now_incremental.second
             factor = 10000000 
             
-            # Prefijo único para esta ejecución (ej: 2604210086400)
             prefijo_ejecucion = (fecha_prefijo * factor) + segundos_dia
             
-            # Filtramos para procesar solo tablas de hechos en incremental
             tablas_silver = {k: v for k, v in tablas_silver.items() if k.startswith('fact_')}
             
             if 'fact_order' in tablas_silver:
-                # Sumamos el prefijo idéntico a todas las filas de la tabla de órdenes
                 tablas_silver['fact_order']['order_id'] = prefijo_ejecucion + tablas_silver['fact_order']['order_id']
             
             if 'fact_item_order' in tablas_silver:
-                # IMPORTANTE: Usamos el MISMO prefijo_ejecucion para que el order_id coincida
                 tablas_silver['fact_item_order']['order_id'] = prefijo_ejecucion + tablas_silver['fact_item_order']['order_id']
-                # También lo aplicamos al ID del ítem para asegurar su unicidad
                 tablas_silver['fact_item_order']['order_item_id'] = prefijo_ejecucion + tablas_silver['fact_item_order']['order_item_id']
 
         print("Step 5: Persistiendo en Base de Datos PostgreSQL (Supabase)...")
-        cargar_a_sql(tablas_silver, tipo_carga)
+        db_connector.cargar_a_sql(tablas_silver, tipo_carga) # <- CAMBIO: Uso del objeto conector
         
         # ---------------------------------------------------------
         # 5. FINALIZACIÓN Y AUDITORÍA EXITOSA
         # ---------------------------------------------------------
         filas_cargadas = len(tablas_silver.get('fact_order', []))
-        registrar_auditoria(engine, tipo_carga, 'SUCCESS', filas=filas_cargadas)
+        db_connector.registrar_auditoria(tipo_carga, 'SUCCESS', filas=filas_cargadas) # <- CAMBIO: Ya no requiere pasar 'engine'
         
         end_time = datetime.now()
-        duracion = end_time - start_time
         print(f"\n{'='*60}\n🏁 PIPELINE FINALIZADO CON ÉXITO\n{'='*60}")
 
     except Exception as e:
         # AUDITORÍA DE FALLO
         try:
-            registrar_auditoria(engine, tipo_carga, 'FAILED', error=str(e))
+            db_connector.registrar_auditoria(tipo_carga, 'FAILED', error=str(e)) # <- CAMBIO: Ya no requiere pasar 'engine'
         except:
             print("⚠️ No se pudo registrar el fallo en la tabla de auditoría.")
             
         print(f"\n❌ ERROR CRÍTICO: {str(e)}")
-        sys.exit(1) # Esto garantiza el ROJO en GitHub
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
