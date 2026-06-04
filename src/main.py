@@ -23,7 +23,7 @@ class PipelineOrchestrator:
         self.ingestor = DataIngestor()
         self.transformer = SilverTransformer()  # <- Agregado al flujo OO
 
-    def run(self):
+    def ejecutarPipeline(self):
         """Ejecuta el ciclo de vida completo del pipeline (Extract, Transform, Load)."""
         start_time = datetime.now()
         
@@ -129,5 +129,5 @@ class PipelineOrchestrator:
 if __name__ == "__main__":
     # Instanciamos el objeto orquestador y ejecutamos el pipeline
     orchestrator = PipelineOrchestrator()
-    orchestrator.run()
+    orchestrator.ejecutarPipeline()
 
