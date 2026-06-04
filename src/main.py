@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 
 # Importaciones de módulos internos del proyecto
-from src.bronze.ingestion import descargar_datos, aplicar_logica_carga, obtener_ruta_supabase
+from src.bronze.ingestion import DataIngestor  # <- CAMBIO: Importamos la clase en vez de las funciones
 from src.utils.storage_connector import upload_to_lakehouse
 from src.silver.transformation import transformar_a_silver
 from src.utils.db_connector import cargar_a_sql, registrar_auditoria, get_db_engine
@@ -28,21 +28,23 @@ def main():
         # ---------------------------------------------------------
         # 1. CONFIGURACIÓN DE ENTORNO
         # ---------------------------------------------------------
-        # Captura la variable definida en GitHub Actions o usa INCREMENTAL por defecto
         print(f"{'='*60}")
         print(f"🚀 EJECUCIÓN DEL PIPELINE - MODO: {tipo_carga}")
         print(f"⏰ Inicio: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*60}\n")
 
+        # Inicializamos nuestro componente de Ingesta Orientado a Objetos
+        ingestor = DataIngestor()  # <- CAMBIO: Instanciación de la clase
+
         # ---------------------------------------------------------
         # 2. INGESTA Y PREPARACIÓN (BRONZE)
         # ---------------------------------------------------------
         print("Step 1: Descargando datos desde Kaggle API...")
-        df_raw = descargar_datos()
+        df_raw = ingestor.descargar_datos()  # <- CAMBIO: Llamada al método del objeto
         
         print("Step 2: Aplicando lógica de carga y simulación de fechas...")
         # En GLOBAL usa datos históricos; en INCREMENTAL simula datos del día actual
-        df_final = aplicar_logica_carga(df_raw, tipo_carga)
+        df_final = ingestor.aplicar_logica_carga(df_raw, tipo_carga)  # <- CAMBIO: Llamada al método del objeto
         
         # ---------------------------------------------------------
         # 3. PERSISTENCIA EN STORAGE (CAPA BRONZE)
@@ -69,7 +71,7 @@ def main():
                     os.remove(temp_file)
         else:
             print("Step 3 [INCREMENTAL]: Generando archivo diario...")
-            remote_path = obtener_ruta_supabase(df_final, tipo_carga)
+            remote_path = ingestor.obtener_ruta_supabase(df_final, tipo_carga)  # <- CAMBIO: Llamada al método del objeto
             temp_file = "temp_incremental.parquet"
             
             df_final.to_parquet(temp_file, index=False)
