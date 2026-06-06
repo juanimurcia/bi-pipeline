@@ -66,17 +66,19 @@ class PipelineOrchestrator:
                 remote_path = f"bronze/supply_chain/year={year}/month={month:02d}/global_load.parquet"
                 temp_file = f"temp_{year}_{month}.parquet"
                 
-                df_grupo.to_parquet(temp_file, index=False)
+                # 🌟 DELEGACIÓN CORRECTA: Ingestion se encarga de empaquetar el archivo físico
+                self.ingestor.generar_archivo_temporal(df_grupo, temp_file)
                 self.storage_connector.upload_to_lakehouse(temp_file, remote_path)
                 
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
         else:
-            print("Step 3 [INCREMENTAL]: Generando archivo diario...")
+            print("Step 3 [INCREMENTAL]: Generando archivo diario Parquet...")
             remote_path = self.ingestor.obtener_ruta_supabase(df_final, self.tipo_carga)
             temp_file = "temp_incremental.parquet"
             
-            df_final.to_parquet(temp_file, index=False)
+            # 🌟 DELEGACIÓN CORRECTA: Ingestion se encarga de empaquetar el archivo físico
+            self.ingestor.generar_archivo_temporal(df_final, temp_file)
             self.storage_connector.upload_to_lakehouse(temp_file, remote_path)
             
             if os.path.exists(temp_file):
