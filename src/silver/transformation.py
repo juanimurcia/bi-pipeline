@@ -1,11 +1,12 @@
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 class SilverTransformer:
     def __init__(self):
         """
         Componente de la Capa Silver encargado de la limpieza, normalización
-        y modelado dimensional de los datos bajo el estándar Snowflake.
+        und modelado dimensional de los datos bajo el estándar Snowflake.
         """
         pass
 
@@ -22,13 +23,11 @@ class SilverTransformer:
     def _filtrar_outliers_financieros(self, df: pd.DataFrame) -> pd.DataFrame:
         """Aplica reglas de negocio para asegurar integridad financiera."""
         df_clean = df.copy()
-        # Evitamos división por cero y calculamos el ratio
         df_clean['profit_ratio_calc'] = np.where(
             df_clean['order_item_total'] != 0, 
             df_clean['benefit_per_order'] / df_clean['order_item_total'], 
             0
         )
-        # Filtramos inconsistencias financieras graves
         return df_clean[df_clean['profit_ratio_calc'] >= -1.0].copy()
 
     def _normalizar_tipos_y_textos(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -42,7 +41,6 @@ class SilverTransformer:
             if col in df_norm.columns:
                 df_norm[col] = df_norm[col].astype(str).str.strip().str.title()
         
-        # Aseguramos formato fecha
         df_norm['order_date_dateorders'] = pd.to_datetime(df_norm['order_date_dateorders'])
         df_norm['shipping_date_dateorders'] = pd.to_datetime(df_norm['shipping_date_dateorders'])
         
@@ -63,28 +61,23 @@ class SilverTransformer:
 
     def _generar_jerarquia_geografica(self, df: pd.DataFrame):
         """Construye el Snowflake Geográfico (Market -> City)."""
-        # Market
         dim_market = self._crear_lookup_table(df, 'market', 'market_id', 'market_name')
         
-        # Region
         dim_region = df[['order_region', 'market']].drop_duplicates().merge(dim_market, left_on='market', right_on='market_name')
         dim_region = dim_region[['order_region', 'market_id']].reset_index(drop=True)
         dim_region.insert(0, 'region_id', dim_region.index + 1)
         dim_region.rename(columns={'order_region': 'region_name'}, inplace=True)
         
-        # Country
         dim_country = df[['order_country', 'order_region']].drop_duplicates().merge(dim_region, left_on='order_region', right_on='region_name')
         dim_country = dim_country[['order_country', 'region_id']].reset_index(drop=True)
         dim_country.insert(0, 'country_id', dim_country.index + 1)
         dim_country.rename(columns={'order_country': 'country_name'}, inplace=True)
         
-        # State
         dim_state = df[['order_state', 'order_country']].drop_duplicates().merge(dim_country, left_on='order_country', right_on='country_name')
         dim_state = dim_state[['order_state', 'country_id']].reset_index(drop=True)
         dim_state.insert(0, 'state_id', dim_state.index + 1)
         dim_state.rename(columns={'order_state': 'state_name'}, inplace=True)
         
-        # City
         dim_city = df[['order_city', 'order_state']].drop_duplicates().merge(dim_state, left_on='order_state', right_on='state_name')
         dim_city = dim_city[['order_city', 'state_id']].reset_index(drop=True)
         dim_city.insert(0, 'city_id', dim_city.index + 1)
@@ -112,11 +105,9 @@ class SilverTransformer:
                    .merge(dims['dim_delivery_status'], left_on='delivery_status', right_on='delivery_status_name') \
                    .merge(dims['dim_shipping_mode'], left_on='shipping_mode', right_on='shipping_mode_name')
         
-        # Fact Order
         f_order = df_f[['order_id', 'customer_id', 'city_id', 'order_date_dateorders', 'shipping_date_dateorders', 
                         'type_id', 'order_status_id', 'delivery_status_id', 'shipping_mode_id', 'late_delivery_risk']].drop_duplicates('order_id')
         
-        # Fact Item Order
         f_item = df_f[['order_item_id', 'order_id', 'product_card_id', 'order_item_quantity', 'sales', 'order_item_discount_rate', 'order_item_discount',
                        'order_item_total', 'benefit_per_order', 'profit_ratio_calc']].rename(columns={'product_card_id': 'product_id'})
         f_item = f_item.drop_duplicates(subset=['order_item_id'])
@@ -127,11 +118,11 @@ class SilverTransformer:
     # INTERFAZ PÚBLICA (ORQUESTADOR DE CAPA)
     # ==========================================
 
-    def transformar_a_silver(self, df_bronze: pd.DataFrame) -> dict:
+    def transformar_a_silver(self, df_bronze: pd.DataFrame, tipo_carga: str) -> dict:
         """Punto de entrada principal que orquesta toda la transformación de la capa."""
         print("--- Transformando datos a Capa Silver ---")
         
-        # 1. Limpieza (Llamadas internas usando self)
+        # 1. Limpieza 
         df = self._estandarizar_nombres_columnas(df_bronze)
         df = df.drop_duplicates(subset=['order_item_id'])
         df = self._filtrar_outliers_financieros(df)
@@ -154,7 +145,7 @@ class SilverTransformer:
             how='left'
         ).drop(columns=['customer_segment', 'customer_segment_name'])
         
-        dims = {
+        tablas_silver = {
             'dim_market': d_mkt, 
             'dim_region': d_reg, 
             'dim_country': d_cnt, 
@@ -172,6 +163,28 @@ class SilverTransformer:
         }
         
         # 3. Hechos
-        f_order, f_item = self._construir_tablas_hechos(df, dims)
+        f_order, f_item = self._construir_tablas_hechos(df, tablas_silver)
+        tablas_silver['fact_order'] = f_order
+        tablas_silver['fact_item_order'] = f_item
         
-        return {**dims, 'fact_order': f_order, 'fact_item_order': f_item}
+        # 4. Lógica de Involución/Ajuste Estructural por Tipo de Carga (Encapsulado en Silver)
+        if tipo_carga == 'INCREMENTAL':
+            print("⚠️ Ajustando IDs para carga incremental (Concatenación Determinística)...")
+            
+            now_incremental = datetime.now()
+            fecha_prefijo = now_incremental.strftime("%y%m%d") 
+            segundos_dia = (now_incremental.hour * 3600) + (now_incremental.minute * 60) + now_incremental.second
+            segundos_prefijo = f"{segundos_dia:05d}" 
+            prefijo_ejecucion = f"{fecha_prefijo}{segundos_prefijo}" 
+            
+            # Filtramos el diccionario para mantener solo las tablas de hechos según lógica del negocio
+            tablas_silver = {k: v for k, v in tablas_silver.items() if k.startswith('fact_')}
+            
+            if 'fact_order' in tablas_silver:
+                tablas_silver['fact_order']['order_id'] = (prefijo_ejecucion + tablas_silver['fact_order']['order_id'].astype(str)).astype(int)
+            
+            if 'fact_item_order' in tablas_silver:
+                tablas_silver['fact_item_order']['order_id'] = (prefijo_ejecucion + tablas_silver['fact_item_order']['order_id'].astype(str)).astype(int)
+                tablas_silver['fact_item_order']['order_item_id'] = (prefijo_ejecucion + tablas_silver['fact_item_order']['order_item_id'].astype(str)).astype(int)
+
+        return tablas_silver
