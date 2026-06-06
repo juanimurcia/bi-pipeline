@@ -74,3 +74,11 @@ class DataIngestor:
             # Ejemplo: bronze/supply_chain/year=2026/month=04/batch_19_2030.parquet
             timestamp = datetime.now().strftime("%H%M")
             return f"bronze/supply_chain/year={year}/month={month}/batch_{day}_{timestamp}.parquet"
+
+    def generar_archivo_temporal(self, df: pd.DataFrame, nombre_archivo: str) -> str:
+        """
+        Responsabilidad de Ingestión: Convierte un DataFrame en un archivo físico Parquet local.
+        Abstrae al orquestador de las librerías de serialización de bajo nivel.
+        """
+        df.to_parquet(nombre_archivo, index=False)
+        return nombre_archivo
