@@ -97,23 +97,25 @@ class PipelineOrchestrator:
 
         # Lógica de IDs Únicos con Tiempo Congelado (yyMMdd + Segundos + ID)
         if self.tipo_carga == 'INCREMENTAL':
-            print("⚠️ Ajustando IDs para carga incremental (Timestamp Congelado)...")
+            print("⚠️ Ajustando IDs para carga incremental (Concatenación Determinística)...")
             
             now_incremental = datetime.now()
-            fecha_prefijo = int(now_incremental.strftime("%y%m%d"))
+            fecha_prefijo = now_incremental.strftime("%y%m%d") # Ejemplo: "260606"
             segundos_dia = (now_incremental.hour * 3600) + (now_incremental.minute * 60) + now_incremental.second
-            factor = 10000000 
+            segundos_prefijo = f"{segundos_dia:05d}" # Asegura siempre 5 dígitos (ej. "62059")
             
-            prefijo_ejecucion = (fecha_prefijo * factor) + segundos_dia
+            # 🌟 Formamos un prefijo de texto único para ESTA ejecución exacta
+            prefijo_ejecucion = f"{fecha_prefijo}{segundos_prefijo}" # Resultado: "26060662059"
             
             tablas_silver = {k: v for k, v in tablas_silver.items() if k.startswith('fact_')}
             
+            # 🌟 SOLUCIÓN: Convertimos a string, concatenamos el prefijo y volvemos a pasar a entero (BIGINT)
             if 'fact_order' in tablas_silver:
-                tablas_silver['fact_order']['order_id'] = prefijo_ejecucion + tablas_silver['fact_order']['order_id']
+                tablas_silver['fact_order']['order_id'] = (prefijo_ejecucion + tablas_silver['fact_order']['order_id'].astype(str)).astype(int)
             
             if 'fact_item_order' in tablas_silver:
-                tablas_silver['fact_item_order']['order_id'] = prefijo_ejecucion + tablas_silver['fact_item_order']['order_id']
-                tablas_silver['fact_item_order']['order_item_id'] = prefijo_ejecucion + tablas_silver['fact_item_order']['order_item_id']
+                tablas_silver['fact_item_order']['order_id'] = (prefijo_ejecucion + tablas_silver['fact_item_order']['order_id'].astype(str)).astype(int)
+                tablas_silver['fact_item_order']['order_item_id'] = (prefijo_ejecucion + tablas_silver['fact_item_order']['order_item_id'].astype(str)).astype(int)
 
         print("✅ CAPA SILVER: Estructuras relacionales generadas.")
         return tablas_silver
