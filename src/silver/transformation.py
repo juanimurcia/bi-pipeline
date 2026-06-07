@@ -214,7 +214,7 @@ class SilverTransformer:
         geo_dims = self._generar_jerarquia_geografica(df)
         d_segment = self._crear_lookup_table(df, 'customer_segment', 'customer_segment_id', 'customer_segment_name')
         d_customer = self._construir_dimension_clientes(df, d_segment)
-        tablas_silver = self._inicializar_mapa_dimensionses(df, geo_dims, d_segment, d_customer)
+        tablas_silver = self._inicializar_mapa_dimensiones(df, geo_dims, d_segment, d_customer)
         
         # Fase 3: Modelado de Hechos
         f_order, f_item = self._construir_tablas_hechos(df, tablas_silver)
