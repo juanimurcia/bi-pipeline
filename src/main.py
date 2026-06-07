@@ -69,23 +69,16 @@ class PipelineOrchestrator:
     def ejecutarIngesta(self):
         """
         Operación del Sistema que resuelve el Caso de Uso: Ingestar Datos (Capa Bronze).
-        Coordina de forma abstracta la descarga externa y manda a guardar el Parquet final.
+        Delega la secuencia completa de extracción y persistencia en el componente experto.
 
         Returns:
             pd.DataFrame: Conjunto de datos en crudo retenido en memoria para optimizar el paso a Silver.
         """
-        print("Step 1: Descargando datos desde Kaggle API...")
-        df_raw = self.ingestor.descargar_datos()
-        
-        print("Step 2: Aplicando lógica de carga y simulación de fechas...")
-        df_final = self.ingestor.aplicar_logica_carga(df_raw, self.tipo_carga)
-        
-        print("Step 3: Persistiendo en Storage (Capa Bronze)...")
-        # Delegación Pura: El orquestador no manipula el file system ni conoce os.remove()
-        self.ingestor.salvar_en_storage(df_final, self.tipo_carga, self.storage_connector)
+        # Delegación Pura: El orquestador global no sabe CÓMO se ingesta ni en cuántas fases internas se divide.
+        df_bronze = self.ingestor.ejecutar_ingestion_bronze(self.tipo_carga, self.storage_connector)
         
         print("✅ CAPA BRONZE: Datos persistidos en Storage exitosamente.")
-        return df_final
+        return df_bronze
 
     def ejecutarLimpieza(self, df_bronze):
         """
