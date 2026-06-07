@@ -163,8 +163,12 @@ class SilverTransformer:
         
         return f_order, f_item
 
-    def _resolver_unicidad_incremental(self, tablas_silver: dict) -> dict:
-        """Encapsula la mutación determinística de IDs y el filtrado para cargas incrementales."""
+    def _resolver_unicidad_incremental(self, f_order: pd.DataFrame, f_item: pd.DataFrame) -> dict:
+        """
+        [MODIFICADO PARA EL DIAGRAMA]
+        Encapsula la mutación determinística de IDs para cargas incrementales.
+        Recibe las estructuras transaccionales directamente y devuelve el catálogo filtrado.
+        """
         print("⚠️ Ajustando IDs para carga incremental (Concatenación Determinística)...")
         
         now_incremental = datetime.now()
@@ -173,25 +177,32 @@ class SilverTransformer:
         segundos_prefijo = f"{segundos_dia:05d}" 
         prefijo_ejecucion = f"{fecha_prefijo}{segundos_prefijo}" 
         
-        # Aislamiento exclusivo de tablas transaccionales
-        tablas_filtradas = {k: v for k, v in tablas_silver.items() if k.startswith('fact_')}
+        # Copias explícitas para mitigar el SettingWithCopyWarning de Pandas
+        f_order_inc = f_order.copy()
+        f_item_inc = f_item.copy()
         
-        if 'fact_order' in tablas_filtradas:
-            tablas_filtradas['fact_order']['order_id'] = (prefijo_ejecucion + tablas_filtradas['fact_order']['order_id'].astype(str)).astype(int)
-        
-        if 'fact_item_order' in tablas_filtradas:
-            tablas_filtradas['fact_item_order']['order_id'] = (prefijo_ejecucion + tablas_filtradas['fact_item_order']['order_id'].astype(str)).astype(int)
-            tablas_filtradas['fact_item_order']['order_item_id'] = (prefijo_ejecucion + tablas_filtradas['fact_item_order']['order_item_id'].astype(str)).astype(int)
+        # Mutación determinística para BIGINT seguro en base de datos
+        f_order_inc['order_id'] = (prefijo_ejecucion + f_order_inc['order_id'].astype(str)).astype(int)
+        f_item_inc['order_id'] = (prefijo_ejecucion + f_item_inc['order_id'].astype(str)).astype(int)
+        f_item_inc['order_item_id'] = (prefijo_ejecucion + f_item_inc['order_item_id'].astype(str)).astype(int)
 
-        return tablas_filtradas
+        # Regala cohesión: En incremental solo se devuelven tablas de hechos (fact_)
+        return {
+            'fact_order': f_order_inc,
+            'fact_item_order': f_item_inc
+        }
 
     # =========================================================================
     # INTERFAZ PÚBLICA: ORQUESTADOR COMPONENTE DE CAPA
     # =========================================================================
 
     def transformar_a_silver(self, df_bronze: pd.DataFrame, tipo_carga: str) -> dict:
-        """Punto de Entrada del Caso de Uso: Convierte el DataFrame de la capa Bronze."""
-        print("--- Transformando datos a Capa Silver ---")
+        """
+        [MODIFICADO - SOPORTE HÍBRIDO GLOBAL/INCREMENTAL]
+        Punto de Entrada del Caso de Uso: Convierte el DataFrame de la capa Bronze.
+        Mapea el DataFrame delegando su conversión analítica según la estrategia configurada.
+        """
+        print(f"--- Transformando datos a Capa Silver ({tipo_carga}) ---")
         
         # Fase 1: Calidad de datos secuencial
         df = self._estandarizar_nombres_columnas(df_bronze)
@@ -203,15 +214,19 @@ class SilverTransformer:
         geo_dims = self._generar_jerarquia_geografica(df)
         d_segment = self._crear_lookup_table(df, 'customer_segment', 'customer_segment_id', 'customer_segment_name')
         d_customer = self._construir_dimension_clientes(df, d_segment)
-        tablas_silver = self._inicializar_mapa_dimensiones(df, geo_dims, d_segment, d_customer)
+        tablas_silver = self._inicializar_mapa_dimensionses(df, geo_dims, d_segment, d_customer)
         
         # Fase 3: Modelado de Hechos
         f_order, f_item = self._construir_tablas_hechos(df, tablas_silver)
+        
+        # Fase 4: Desvío de estrategia de arquitectura
+        if tipo_carga == 'INCREMENTAL':
+            # Ejecuta el flujo exacto que modela el Diagrama de Secuencia Lineal
+            tablas_silver_final = self._resolver_unicidad_incremental(f_order, f_item)
+            return tablas_silver_final
+        
+        # Flujo alternativo para carga GLOBAL: Mantiene dimensiones + agrega hechos intactos
         tablas_silver['fact_order'] = f_order
         tablas_silver['fact_item_order'] = f_item
         
-        # Fase 4: Resolución de Unicidad de Claves (Incremental)
-        if tipo_carga == 'INCREMENTAL':
-            tablas_silver = self._resolver_unicidad_incremental(tablas_silver)
-
         return tablas_silver
