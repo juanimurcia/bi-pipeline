@@ -24,14 +24,16 @@ def test_aplicar_logica_carga_incremental():
 # 2. Test con Mock: Validar que se intente subir al Storage
 def test_salvar_en_storage_llama_al_conector():
     ingestor = DataIngestor()
-    
-    # Creamos un MOCK del conector de Storage
     mock_storage = MagicMock()
     
-    df_prueba = pd.DataFrame({'a': [1]})
+    # Crea un DataFrame que tenga la columna que el código busca
+    df_prueba = pd.DataFrame({
+        'order date (DateOrders)': pd.to_datetime(['2025-01-01']),
+        'columna_extra': [1]
+    })
     
-    # Ejecutamos el método que salva
+    # Ahora sí, al ejecutar esto, el código encontrará la columna
     ingestor._salvar_en_storage(df_prueba, "INCREMENTAL", mock_storage)
     
-    # ASSERT: Verificamos que el MOCK recibió una llamada a upload_to_lakehouse
+    # Verificamos que se haya intentado subir al storage
     mock_storage.upload_to_lakehouse.assert_called_once()
