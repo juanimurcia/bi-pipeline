@@ -5,15 +5,14 @@ from src.silver.transformation import SilverTransformer
 
 @pytest.fixture
 def sample_df():
-    """Crea un DataFrame pequeño pero representativo para probar las transformaciones."""
+    """Crea un DataFrame completo para que el Transformador no falle."""
     return pd.DataFrame({
         'Order ID': [1, 1],
         'Order Item ID': [101, 102],
         'Customer ID': [50, 50],
         'Order Item Total': [100.0, 200.0],
         'Benefit per order': [10.0, 20.0],
-        # CORRECCIÓN: Multiplica por 2 para que coincida con la longitud de las otras columnas
-        'Customer City': ['  BUENOS AIRES ', '  BUENOS AIRES '], 
+        'Customer City': ['BUENOS AIRES', 'BUENOS AIRES'],
         'order_date (DateOrders)': ['2025-01-01', '2025-01-01'],
         'shipping_date (DateOrders)': ['2025-01-03', '2025-01-03'],
         'Market': ['LATAM', 'LATAM'],
@@ -33,7 +32,15 @@ def sample_df():
         'product_card_id': [999, 999],
         'product_name': ['Ball', 'Ball'],
         'product_price': [50.0, 50.0],
-        'late_delivery_risk': [0, 0]
+        'late_delivery_risk': [0, 0],
+        # --- COLUMNAS FALTANTES QUE EL TRANSFORMADOR BUSCA ---
+        'customer_fname': ['Juan', 'Juan'],
+        'customer_lname': ['Perez', 'Perez'],
+        'customer_email': ['juan@mail.com', 'juan@mail.com'],
+        'customer_street': ['Calle 123', 'Calle 123'],
+        'customer_zipcode': ['1000', '1000'],
+        'latitude': [-34.6, -34.6],
+        'longitude': [-58.4, -58.4]
     })
 
 def test_estandarizar_nombres_columnas():
