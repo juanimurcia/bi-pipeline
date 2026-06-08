@@ -5,7 +5,7 @@ from src.silver.transformation import SilverTransformer
 
 @pytest.fixture
 def sample_df():
-    """Crea un DataFrame completo para que el Transformador no falle."""
+    """Crea un DataFrame con todas las columnas esperadas por SilverTransformer."""
     return pd.DataFrame({
         'Order ID': [1, 1],
         'Order Item ID': [101, 102],
@@ -33,14 +33,18 @@ def sample_df():
         'product_name': ['Ball', 'Ball'],
         'product_price': [50.0, 50.0],
         'late_delivery_risk': [0, 0],
-        # --- COLUMNAS FALTANTES QUE EL TRANSFORMADOR BUSCA ---
         'customer_fname': ['Juan', 'Juan'],
         'customer_lname': ['Perez', 'Perez'],
         'customer_email': ['juan@mail.com', 'juan@mail.com'],
         'customer_street': ['Calle 123', 'Calle 123'],
         'customer_zipcode': ['1000', '1000'],
         'latitude': [-34.6, -34.6],
-        'longitude': [-58.4, -58.4]
+        'longitude': [-58.4, -58.4],
+        # --- COLUMNAS AGREGADAS PARA CORREGIR EL ERROR ---
+        'order_item_quantity': [1, 2],
+        'sales': [100.0, 200.0],
+        'order_item_discount_rate': [0.1, 0.1],
+        'order_item_discount': [10.0, 20.0]
     })
 
 def test_estandarizar_nombres_columnas():
