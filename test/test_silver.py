@@ -102,11 +102,11 @@ def test_resolver_unicidad_incremental_modifica_ids(sample_df):
 
 def test_manejo_de_nulos_en_columnas_criticas():
     """
-    Test de Calidad: Asegura que el pipeline no falle ante valores nulos
-    en columnas clave, descartando registros inválidos.
+    Test de Calidad: Confirma que al pasar un nulo en un campo crítico,
+    el transformador lo descarta correctamente.
     """
     transformer = SilverTransformer()
-    # Creamos un DF con un valor None en un campo crítico
+    # Mantenemos tu DF de prueba, pero ahora sabemos que el código lo filtrará
     df_con_nulos = pd.DataFrame({
         'Order ID': [None], 'Order Item ID': [101], 'Customer ID': [50],
         'Order Item Total': [100.0], 'Benefit per order': [10.0],
@@ -127,7 +127,8 @@ def test_manejo_de_nulos_en_columnas_criticas():
     })
     
     resultado = transformer.transformar_a_silver(df_con_nulos, "GLOBAL")
-    # Si la política es descartar registros con order_id nulo, fact_order debe estar vacío
+    
+    # ¡Ahora este assert debería pasar porque tu transformación ya hace el dropna!
     assert len(resultado['fact_order']) == 0
 
 def test_integridad_referencial(sample_df):
@@ -146,13 +147,13 @@ def test_integridad_referencial(sample_df):
 
 def test_tipos_de_datos_correctos(sample_df):
     """
-    Test de Schema Enforcement: Garantiza que los campos numéricos
-    tengan el tipo de dato correcto para operaciones matemáticas.
+    Test de Schema Enforcement: Garantiza que los campos numéricos 
+    en la tabla de hechos de ítems sean del tipo correcto.
     """
     transformer = SilverTransformer()
     res = transformer.transformar_a_silver(sample_df, "GLOBAL")
     
-    # Asegura que las ventas sean flotantes (float)
-    assert pd.api.types.is_float_dtype(res['fact_order']['sales'])
-    # Asegura que la cantidad sea entera (int)
+    # Apuntamos correctamente a la tabla donde residen estas columnas
+    assert 'sales' in res['fact_item_order'].columns
+    assert pd.api.types.is_float_dtype(res['fact_item_order']['sales'])
     assert pd.api.types.is_integer_dtype(res['fact_item_order']['order_item_quantity'])
