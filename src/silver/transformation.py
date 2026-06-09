@@ -206,6 +206,7 @@ class SilverTransformer:
         
         # Fase 1: Calidad de datos secuencial
         df = self._estandarizar_nombres_columnas(df_bronze)
+        df = df.dropna(subset=['order_id', 'customer_id', 'order_item_id'])
         df = df.drop_duplicates(subset=['order_item_id'])
         df = self._filtrar_outliers_financieros(df)
         df = self._normalizar_tipos_y_textos(df)
